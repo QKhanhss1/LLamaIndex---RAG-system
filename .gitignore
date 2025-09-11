@@ -1,0 +1,47 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.pyc
+*.pdb
+*.egg
+*.eggs
+*.env
+.env*
+venv/
+ENV/
+.envrc
+
+# Jupyter
+.ipynb_checkpoints
+
+
+# VSCode
+.vscode/
+
+# Data & Output
+output/
+*.csv
+*.log
+*.pdf
+*.db
+*.sqlite
+*.parquet
+*.h5
+*.xlsx
+*.xls
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Others
+*.bak
+*.swp
+*.tmp
+*.old
+
+# Git
+.git/
+
