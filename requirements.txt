@@ -5,6 +5,7 @@ llama-index-embeddings-openai
 llama-index.retrievers.bm25
 llama-index-llms-openai
 llama-index-postprocessor-cohere-rerank
+llama-index-readers-google
 pinecone
 pymupdf
 pytesseract
@@ -16,3 +17,6 @@ cohere
 pdfplumber
 unstructured[local-inference]
 load_dotenv
+google-api-python-client 
+google-auth-httplib2 
+google-auth-oauthlib

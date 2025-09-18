@@ -4,44 +4,38 @@ __pycache__/
 *.pyo
 *.pyd
 *.pyc
-*.pdb
-*.egg
-*.eggs
 *.env
-.env*
+.env
 venv/
 ENV/
-.envrc
+.env.*
 
-# Jupyter
-.ipynb_checkpoints
+.env.
 
+# Jupyter Notebooks
+.ipynb_checkpoints/
+*.ipynb
 
-# VSCode
+# VS Code
 .vscode/
 
-# Data & Output
+# Data and output
 output/
 *.csv
+*.json
+*.txt
 *.log
-*.pdf
-*.db
-*.sqlite
-*.parquet
-*.h5
-*.xlsx
-*.xls
+data/
 
-# OS
+
+# System files
 .DS_Store
 Thumbs.db
 
+# Credentials
+credentials.json
+token.json
+
 # Others
 *.bak
-*.swp
 *.tmp
-*.old
-
-# Git
-.git/
-

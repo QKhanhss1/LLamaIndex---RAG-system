@@ -1,0 +1,11 @@
+# .env.example
+# Copy this file to .env and fill in your own keys
+
+PINECONE_API_KEY=your-pinecone-api-key
+OPENAI_API_KEY=your-openai-api-key
+GOOGLE_API_KEY=your-google-api-key
+PINECONE_ENVIRONMENT=us-east-1
+PINECONE_INDEX_NAME=ragflow
+PINECONE_METRIC=cosine
+PINECONE_DIM=1536
+COHERE_API_KEY=your-cohere-api-key
