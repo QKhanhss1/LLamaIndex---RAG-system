@@ -17,6 +17,7 @@ cohere
 pdfplumber
 unstructured[local-inference]
 load_dotenv
-google-api-python-client 
+google-api-python-client
+flask
 google-auth-httplib2 
 google-auth-oauthlib
