@@ -1,28 +1,22 @@
-# ingest.py
-import os
-from llama_index.core import SimpleDirectoryReader
+
 
 import logging
-from typing import List
+import os
+from dotenv import load_dotenv
 import pinecone
-
+import cohere
 from llama_index.embeddings.openai import OpenAIEmbedding
 from llama_index.vector_stores.pinecone import PineconeVectorStore
 from llama_index.core import StorageContext, VectorStoreIndex
-from typing import List
-from llama_index.core.schema import BaseNode
+from llama_index.core.schema import NodeWithScore
+from llama_index.core.retrievers import VectorIndexRetriever, QueryFusionRetriever
+from llama_index.llms.openai import OpenAI
 
-from llama_index.core import Document
-from llama_index.core.node_parser import SentenceSplitter
-from llama_index.core.node_parser import SemanticSplitterNodeParser
-from llama_index.embeddings.openai import OpenAIEmbedding
-
-from dotenv import load_dotenv
 
 load_dotenv()
-
 PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
 INDEX_NAME = os.getenv("PINECONE_INDEX_NAME")
+COHERE_API_KEY = os.getenv("COHERE_API_KEY")
 
 logging.basicConfig(
     level=logging.INFO,
@@ -30,99 +24,80 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-
-def ingest_pdfs(data_dir: str = "./data"):
-    """
-    Đọc tất cả file PDF trong thư mục data/ 
-    và trả về list Document objects
-    """
-    if not os.path.exists(data_dir):
-        raise ValueError(f"❌ Thư mục {data_dir} không tồn tại!")
-
-    # SimpleDirectoryReader mặc định sử dụng pypdf để đọc file PDF
-    reader = SimpleDirectoryReader(
-        input_dir=data_dir,
-        required_exts=[".pdf"],   # chỉ đọc file PDF
-        recursive=True            # đọc cả sub-folder nếu có
-    )
-
-    docs = reader.load_data()
-    print(f"✅ Đã ingest {len(docs)} file PDF từ thư mục {data_dir}")
-    return docs
-
-def chunk_documents(docs: List[Document], use_semantic: bool = True):
-    """
-    Chunking dữ liệu với SentenceSplitter + (tùy chọn) SemanticSplitterNodeParser
-    """
-
-    if not docs:
-        logger.warning("❌ Không có document nào để chunking.")
-        return []
-
-    # Step 1: Sentence-based chunking
-    logger.info("👉 Bắt đầu chunking bằng SentenceSplitter...")
-    sentence_splitter = SentenceSplitter(chunk_size=512, chunk_overlap=50)
-    sentence_nodes = sentence_splitter.get_nodes_from_documents(docs)
-    logger.info(f"✅ SentenceSplitter tạo ra {len(sentence_nodes)} chunks.")
-
-    if not use_semantic:
-        return sentence_nodes
-
-    # Step 2: Semantic-based chunking
-    logger.info("👉 Bắt đầu chunking bằng SemanticSplitterNodeParser...")
-    embed_model = OpenAIEmbedding(model="text-embedding-3-small")
-    semantic_splitter = SemanticSplitterNodeParser(
-        embed_model=embed_model,
-        buffer_size=1,
-        breakpoint_percentile_threshold=95,
-    )
-
-    semantic_nodes = semantic_splitter.get_nodes_from_documents(docs)
-    logger.info(f"✅ SemanticSplitter tạo ra {len(semantic_nodes)} chunks.")
-
-    return semantic_nodes
-def push_to_pinecone(nodes: List[BaseNode]):
-    """
-    Tạo embeddings cho các nodes và lưu vào Pinecone index 'ragflow'
-    """
-    if not nodes:
-        logger.warning("❌ Không có nodes nào để embed.")
-        return None
+def get_index() -> VectorStoreIndex:
     pc = pinecone.Pinecone(api_key=PINECONE_API_KEY)
-    if INDEX_NAME not in pc.list_indexes().names():
-    # Nếu index chưa tồn tại → tạo mới
-        logger.info(f"👉 Chưa có index '{INDEX_NAME}', tạo mới...")
-        pc.create_index(
-            INDEX_NAME,
-            dimension=1536,  # text-embedding-3-small có dimension 1536
-            metric="cosine"
-        )
-
     pinecone_index = pc.Index(INDEX_NAME)
-
-    # Embedding model
     embed_model = OpenAIEmbedding(model="text-embedding-3-small")
-
-    # Tạo VectorStore kết nối với Pinecone
-    vector_store = PineconeVectorStore(pinecone_index)
+    vector_store = PineconeVectorStore(pinecone_index=pinecone_index,namespace="default")
     storage_context = StorageContext.from_defaults(vector_store=vector_store)
-
-    # Build index và push lên Pinecone
-    logger.info("👉 Đang tạo VectorStoreIndex và đẩy embeddings vào Pinecone...")
-    index = VectorStoreIndex(
-        nodes,
+    index = VectorStoreIndex.from_vector_store(
+        vector_store=vector_store,
         storage_context=storage_context,
         embed_model=embed_model
     )
-
-    logger.info(f"✅ Đã push {len(nodes)} chunks vào Pinecone index '{INDEX_NAME}'.")
     return index
 
+def cohere_rerank(query: str, nodes: list, top_k: int = 5) -> list:
+    if not nodes:
+        return []
+    co = cohere.Client(api_key=COHERE_API_KEY)
+    docs = [n.node.get_content() for n in nodes]
+    results = co.rerank(
+        query=query,
+        documents=docs,
+        top_n=top_k,
+        model="rerank-multilingual-v3.0"
+    )
+    reranked_nodes = []
+    for r in results.results:
+        idx = r.index
+        reranked_nodes.append(
+            NodeWithScore(
+                node=nodes[idx].node,
+                score=r.relevance_score
+            )
+        )
+    return reranked_nodes
+
+def multiquery_retrieve(query: str, similarity_top_k: int = 10, rerank_top_k: int = 5) -> list:
+    index = get_index()
+    dense_retriever = VectorIndexRetriever(index=index, similarity_top_k=similarity_top_k)
+    multiquery_retriever = QueryFusionRetriever(
+        [dense_retriever],
+        retriever_weights=[1.0],
+        num_queries=3,
+        similarity_top_k=similarity_top_k,
+        use_async=False
+    )
+    logger.info("👉 Đang retrieve dữ liệu (Multi-query dense)...")
+    candidate_nodes = multiquery_retriever.retrieve(query)
+    logger.info(f"✅ Lấy được {len(candidate_nodes)} candidates từ Pinecone.")
+    top_nodes = cohere_rerank(query, candidate_nodes, top_k=rerank_top_k)
+    logger.info(f"✅ Sau rerank giữ lại {len(top_nodes)} nodes liên quan nhất.")
+    return top_nodes
+
+def rag_agent_answer(query: str, top_nodes: list) -> str:
+    """
+    Sử dụng LLM để tổng hợp câu trả lời cuối cùng từ các top-k nodes.
+    """
+    llm = OpenAI(model="gpt-4.1-mini", api_key=os.getenv("OPENAI_API_KEY"))
+    context = "\n\n".join([n.node.get_content() for n in top_nodes])
+    prompt = f"Dựa trên các đoạn sau, hãy trả lời câu hỏi: '{query}'\n\n{context}"
+    response = llm.complete(prompt)
+    return response
+
 if __name__ == "__main__":
-    docs = ingest_pdfs(data_dir="./data")
-    nodes = chunk_documents(docs, use_semantic=True)
-    push_to_pinecone(nodes)
-    logger.info(f"Tổng số nodes sau chunking: {len(nodes)}")
-    if nodes:
-        logger.info("📄 Mẫu chunk:")
-        logger.info(nodes[0].get_content()[:500])   
+    while True:
+        user_query = input("\nNhập câu hỏi (gõ 'exit' để thoát): ")
+        if user_query.strip().lower() == "exit":
+            print("Kết thúc phiên hỏi đáp.")
+            break
+        results = multiquery_retrieve(user_query, similarity_top_k=10, rerank_top_k=5)
+        print(f"\n📌 Query: {user_query}")
+        for i, n in enumerate(results, 1):
+            print(f"--- Top {i} ---")
+            print(n.node.get_content()[:300], "...")
+        # AI Agent RAG tổng hợp câu trả lời cuối cùng
+        final_answer = rag_agent_answer(user_query, results)
+        print("\n🔎 Câu trả lời tổng hợp bởi AI Agent:")
+        print(final_answer)

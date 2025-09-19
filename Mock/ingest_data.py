@@ -58,6 +58,7 @@ def extract_tables_from_pdf(pdf_path: str, output_csv: str = None):
 def extract_text_with_fallback(pdf_path: str) -> List[Dict[str, Any]]:
     """Extract per-page text with pdfplumber, fallback OCR via PyMuPDF + pytesseract"""
     docs = []
+    all_text = []
 
     with pdfplumber.open(pdf_path) as pdf:
         for page_num, page in enumerate(pdf.pages, start=1):
@@ -79,7 +80,14 @@ def extract_text_with_fallback(pdf_path: str) -> List[Dict[str, Any]]:
                     "tables": [],
                 }
             )
+            all_text.append(f"--- Page {page_num} ---\n{text}\n")
             logger.info(f"📄 Page {page_num} length={len(text)} chars")
+
+    # Save all extracted text to output txt file
+    output_txt_path = os.path.join("output", "extracted_text.txt")
+    with open(output_txt_path, "w", encoding="utf-8") as f:
+        f.write("\n".join(all_text))
+    logger.info(f"✅ Đã lưu toàn bộ text vào {output_txt_path}")
     return docs
 
 
@@ -219,7 +227,7 @@ def create_chunks_from_pdf_and_upsert(
 
 
 if __name__ == "__main__":
-    pdf_file = "./data/Tai lieu on thi CCBHNT 2024.pdf"
+    pdf_file = "./data/HKT Solutions Info_2025-09-19_14-41-46.pdf"
 
     create_chunks_from_pdf_and_upsert(
         pdf_path=pdf_file,
@@ -227,6 +235,6 @@ if __name__ == "__main__":
         max_tokens=512,
         openai_api_key= os.getenv("OPENAI_API_KEY"),
         pinecone_api_key=os.getenv("PINECONE_API_KEY"),
-        pinecone_index="llamaindextest",
-        namespace="default",
+        pinecone_index="ragflow",
+        namespace="Testing",
     )

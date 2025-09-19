@@ -16,7 +16,7 @@ from llama_index.core.retrievers import VectorIndexRetriever, QueryFusionRetriev
 # Load ENV
 load_dotenv()
 PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
-INDEX_NAME = os.getenv("PINECONE_INDEX_NAME")
+INDEX_NAME = "ragflow"
 COHERE_API_KEY = os.getenv("COHERE_API_KEY")
 
 # Logging
@@ -106,7 +106,7 @@ def multiquery_retrieve(query: str, similarity_top_k: int = 10, rerank_top_k: in
 
 
 if __name__ == "__main__":
-    q = "Thời gian hoạt động của Văn Phòng Đại Diện?"
+    q = "Hưng Nghiệp Hưu Trí của Dai-ichi Life Việt Nam với thiết kế ưu việt, cùng với chính sách ưu đãi thuế, sẽ là giải pháp phúc lợi phù hợp nhất cho doanh nghiệp"
     results = multiquery_retrieve(q, similarity_top_k=10, rerank_top_k=5)
 
     print("📌 Query:", q)
